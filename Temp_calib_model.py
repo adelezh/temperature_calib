@@ -16,6 +16,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from lmfit import models
+from lmfit.models import LorentzianModel, QuadraticModel,GaussianModel, VoigtModel, VoigtModel, PseudoVoigtModel
 from scipy import signal,interpolate
 import pandas as pd
 import peakutils
@@ -34,12 +35,13 @@ def generate_model(spec):
     for i, basis_func in enumerate(spec['model']):
         prefix = f'm{i}_'
         model = getattr(models, basis_func['type'])(prefix=prefix)
+
         if basis_func['type'] in ['GaussianModel', 'LorentzianModel', 'VoigtModel','PseudoVoigtModel']: # for now VoigtModel has gamma constrained to sigma
-            model.set_param_hint(prefix+'sigma', min=1e-6, max=x_range)
+            model.set_param_hint(prefix+'sigma', min=1e-6, max=0.1)
             model.set_param_hint(prefix+'center', min=x_min, max=x_max)
-            model.set_param_hint(prefix+'height', min=1e-6, max=2*y_max)
+            model.set_param_hint(prefix+'height', min=0.5*y_max, max=1.2*y_max)
             model.set_param_hint(prefix+'amplitude', min=1e-6)
-            model.set_param_hint(prefix+'fwhm', min=1e-6, max=x_range)
+            model.set_param_hint(prefix+'fwhm', min=1e-6, max=1.0)
             # default guess is horrible!! do not use guess()
             default_params = {
                 prefix+'center': x_min + x_range * random.random(),
@@ -65,7 +67,35 @@ def generate_model(spec):
             
     return composite_model, params
 
+'''
+def add_peak(model, prefix, center, amplitude=0.9, sigma=0.05):
+    peak = model(prefix=prefix)
+    pars = peak.make_params()
+    pars[prefix + 'center'].set(center)
+    pars[prefix + 'amplitude'].set(amplitude)
+    pars[prefix + 'sigma'].set(sigma, min=0)
+    return peak, pars
+
+model = QuadraticModel(prefix='bkg_')
+params = model.make_params(a=0, b=0, c=0)
+xdat = x
+#ydat = y_original
+ydat = y
+for i, cen in enumerate(xdat[peak_indicies]):
+    print(i, cen)
+    peak, pars = add_peak('lz%d_' % (i+1), cen)
+    model = model + peak
+    params.update(pars)
+    
+init = model.eval(params, x=xdat)
+result = model.fit(ydat, params, x=xdat)
+comps = result.eval_components()
+x,y, y_original=loadxy(filename, 22.6, 25.4)
+peak_indicies,_ = signal.find_peaks(y, height=100)
+'''
+
 def update_spec_from_peaks(spec, model_indicies, peak_widths=(10, 25), peak_min=200, **kwargs):
+    #composite_model = None
     x = spec['x']
     y = spec['y']
     x_range = np.max(x) - np.min(x)
@@ -84,10 +114,16 @@ def update_spec_from_peaks(spec, model_indicies, peak_widths=(10, 25), peak_min=
                 model.update(params)
             else:
                 model['params'] = params
+                #par = model.make_params()
+                #par= params
         else:
             raise NotImplementedError(f'model {["type"]} not implemented yet')
-        
-    return peak_indicies
+        #if composite_model is None:
+        #    composite_model = model
+        #else:
+        #    composite_model = composite_model + model
+    #print(composite_model)
+    return peak_indicies #, composite_model
 
 def print_best_values(spec, output):
     model_params = {
@@ -186,8 +222,8 @@ class HelloWindow(QMainWindow):
         self.layout2=QGroupBox("Fittings")
         self.pwlist=list() 
         self.pwlist.append(pg.PlotWidget(name="peak1"))
-        self.pwlist.append(pg.PlotWidget(name="peak2"))
-        self.pwlist.append(pg.PlotWidget(name="peak3"))
+        #self.pwlist.append(pg.PlotWidget(name="peak2"))
+        #self.pwlist.append(pg.PlotWidget(name="peak3"))
         self.pwplot=pg.PlotWidget(name='peakcenter')
         layout=QVBoxLayout()
         for i in range(len(self.pwlist)):
@@ -333,7 +369,6 @@ class HelloWindow(QMainWindow):
         self.calibrateLabel=QLabel('&Calibrator:')
         self.calibrateLabel.setBuddy(self.calibrateComboBox)
         self.calibrateComboBox.setFixedSize(140,25)
-#        emptylabel=QLabel(' ')
         layout=QGridLayout()
 
 
@@ -458,22 +493,31 @@ class HelloWindow(QMainWindow):
         if current_calibrate == 'CeO2':
             dd_calib=[-0.17,-0.085,0,0.106,0.21,0.321,0.437,0.558,0.683,0.813,0.946,1.083,1.223,1.365,1.51,1.657]
             temp_calib=[100,200,293,400,500,600,700,800,900,1000,1100,1200,1300,1400,1500,1600]
-            f = interpolate.interp1d(dd_calib, temp_calib,fill_value="extrapolate")
-            f2 = interpolate.interp1d(temp_calib, dd_calib,fill_value="extrapolate")
+            #f = interpolate.interp1d(dd_calib, temp_calib,fill_value="extrapolate")
+            #f2 = interpolate.interp1d(temp_calib, dd_calib,fill_value="extrapolate")
 
             if self.usenistdata.isChecked()==True:
                 d_room = float(self.standardD.text())
-                dd_room=f2(299)/100.
-                d_20=d_room/(1+dd_room)               
+                #dd_room=f2(299)/100.
+                roomtemp=294.15
+                dd_room=-6.4906e-11*np.power(roomtemp, 3)+3.8492e-07*np.power(roomtemp, 2)+7.4078e-04*np.power(roomtemp,1)-2.4805e-01
+                dd_room=(dd_room-0.000411)/100
+                print(dd_room)
+                #d_20=d_room/(1+dd_room) 
+                d_20=d_room*(1-dd_room)
             else:
                 roomtempfile=self.roomtempfilename[0]
                 output_room=self.run_one(roomtempfile)
-                roomtemp=float(self.roomtemp.text())  
-                dd_room=f2(roomtemp)/100.            
+                roomtemp=float(self.roomtemp.text()) 
+                dd_room=-6.4906e-11*np.power(roomtemp, 3)+3.8492e-07*np.power(roomtemp, 2)+7.4078e-04*np.power(roomtemp,1)-2.4805e-01
+                #dd_room=(f2(roomtemp)-f2(293.15))/100.            
+                dd_room=(dd_room-0.000411)/100
                 d_room=np.asarray(output_room[2])
-                d_20=d_room/(1+dd_room)
+                d_20=d_room*(1-dd_room)
+                #d_20=d_room/(1+dd_room)
             deltd=(dspace-d_20)/d_20*100.
-            temp_out=f(deltd)-273.15
+            #temp_out=f(deltd)-273.15
+            temp_out=62.53*np.power(deltd, 3)-253.76*np.power(deltd, 2)+1041.4*np.power(deltd,1)+289.54 -273.15          
             try:
                 out1=[temp_out[:,i] for i in range(peak_sum)]
                 for peakn in range(peak_sum):
@@ -485,22 +529,37 @@ class HelloWindow(QMainWindow):
         elif current_calibrate == 'Pt':
             dd_calib=[-0.192,-0.191,-0.186,-0.157,-0.081,0,0.096,0.189,0.288,0.388,0.49,0.593,0.699,0.92,1.157,1.414,1.69,1.837]
             temp_calib=[5,25,50,100,200,293,400,500,600,700,800,900,1000,1200,1400,1600,1800,1900]
-            f = interpolate.interp1d(dd_calib, temp_calib, fill_value='extrapolate')
-            f2= interpolate.interp1d(temp_calib, dd_calib, fill_value="extrapolate")
+            #f = interpolate.interp1d(dd_calib, temp_calib, fill_value='extrapolate')
+            #f2= interpolate.interp1d(temp_calib, dd_calib, fill_value="extrapolate")
   
             if self.usenistdata.isChecked()==True:
                 d_room = float(self.standardD.text())
-                dd_room=f2(299)/100.
-                d_20=d_room/(1+dd_room)                 
+                roomtemp=294.15
+                dd_room=3.3867e-11*np.power(roomtemp, 3)+6.4257e-08*np.power(roomtemp, 2)+8.5599e-04*np.power(roomtemp,1)-2.5687e-01
+                dd_room0=3.3867e-11*np.power(293, 3)+6.4257e-08*np.power(293, 2)+8.5599e-04*np.power(293,1)-2.5687e-01
+                dd_room=(dd_room-dd_room0)/100
+                #dd_room=f2(299)/100.
+                #d_20=d_room/(1+dd_room) 
+                d_20=d_room*(1-dd_room)                
+                 
             else:
                 roomtemp=float(self.roomtemp.text())
                 roomtempfile=self.roomtempfilename[0]
                 output_room=self.run_one(roomtempfile)
-                dd_room=f2(roomtemp)/100.                
+                #dd_room=f2(roomtemp)/100.                
                 d_room=np.asarray(output_room[2])
-                d_20=d_room/(1+dd_room)
+                #d_20=d_room/(1+dd_room)
+                dd_room=3.3867e-11*np.power(roomtemp, 3)+6.4257e-08*np.power(roomtemp, 2)+8.5599e-04*np.power(roomtemp,1)-2.5687e-01
+                dd_room0=3.3867e-11*np.power(293, 3)+6.4257e-08*np.power(293, 2)+8.5599e-04*np.power(293,1)-2.5687e-01
+                dd_room=(dd_room-dd_room0)/100
+                #dd_room=f2(299)/100.
+                #d_20=d_room/(1+dd_room) 
+                d_20=d_room*(1-dd_room)                
+                                 
             deltd=(dspace-d_20)/d_20*100.            
-            temp_out=f(deltd)-273.15
+            #temp_out=f(deltd)-273.15
+            temp_out=14.526*np.power(deltd, 3)-161.88*np.power(deltd, 2)+1126*np.power(deltd,1)+289 -273.15          
+            
             try:
                 out1=[temp_out[:,i] for i in range(peak_sum)]              
                 for peakn in range(peak_sum):
@@ -561,7 +620,7 @@ class HelloWindow(QMainWindow):
 
 
     def loadxy_total(self, filename):
-        x,y= np.loadtxt(filename, skiprows=10,unpack=True)
+        x,y= np.loadtxt(filename, skiprows=10, unpack=True)
         xrange=x
         yrange=y
         baseline_y=peakutils.baseline(yrange)
@@ -734,9 +793,11 @@ class HelloWindow(QMainWindow):
 #        model_types=self.modelComboBox.currentText()
         model_list=list(range(peakn))
         x=spec['x']
-        peak_indicies=update_spec_from_peaks(spec, model_list,peak_width=(peak_widths, peak_widths), peak_min=peak_min)
+        peak_indicies=update_spec_from_peaks(spec, model_list, peak_width=(peak_widths, peak_widths), peak_min=peak_min)
         if len(peak_indicies) > 0:
-            model, params= generate_model(spec)    
+            model, params = generate_model(spec)
+            print(model)
+            print(params)
             self.pw2.plot(spec['x'],spec['y'])
             for i in peak_indicies:
                 line=pg.InfiniteLine(angle=90)
