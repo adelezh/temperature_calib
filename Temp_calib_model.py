@@ -875,7 +875,7 @@ def gaussian(x, amp, cen, wid):
 
 if __name__ == "__main__":
     def run_app():
-        app = QtWidgets.QApplication(sys.argv)
+        app = QtWidgets.QApplication([])
         mainWin = HelloWindow()
         mainWin.show()
         app.exec_()
