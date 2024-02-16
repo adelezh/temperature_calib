@@ -16,7 +16,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from lmfit import models
-from lmfit.models import LorentzianModel, QuadraticModel,GaussianModel, VoigtModel, VoigtModel, PseudoVoigtModel
+#from lmfit.models import LorentzianModel, QuadraticModel,GaussianModel, VoigtModel, VoigtModel, PseudoVoigtModel
 from scipy import signal,interpolate
 import pandas as pd
 import peakutils
@@ -66,33 +66,6 @@ def generate_model(spec):
             composite_model = composite_model + model
             
     return composite_model, params
-
-'''
-def add_peak(model, prefix, center, amplitude=0.9, sigma=0.05):
-    peak = model(prefix=prefix)
-    pars = peak.make_params()
-    pars[prefix + 'center'].set(center)
-    pars[prefix + 'amplitude'].set(amplitude)
-    pars[prefix + 'sigma'].set(sigma, min=0)
-    return peak, pars
-
-model = QuadraticModel(prefix='bkg_')
-params = model.make_params(a=0, b=0, c=0)
-xdat = x
-#ydat = y_original
-ydat = y
-for i, cen in enumerate(xdat[peak_indicies]):
-    print(i, cen)
-    peak, pars = add_peak('lz%d_' % (i+1), cen)
-    model = model + peak
-    params.update(pars)
-    
-init = model.eval(params, x=xdat)
-result = model.fit(ydat, params, x=xdat)
-comps = result.eval_components()
-x,y, y_original=loadxy(filename, 22.6, 25.4)
-peak_indicies,_ = signal.find_peaks(y, height=100)
-'''
 
 def update_spec_from_peaks(spec, model_indicies, peak_widths=(10, 25), peak_min=200, **kwargs):
     #composite_model = None
@@ -502,7 +475,6 @@ class HelloWindow(QMainWindow):
                 roomtemp=294.15
                 dd_room=-6.4906e-11*np.power(roomtemp, 3)+3.8492e-07*np.power(roomtemp, 2)+7.4078e-04*np.power(roomtemp,1)-2.4805e-01
                 dd_room=(dd_room-0.000411)/100
-                print(dd_room)
                 #d_20=d_room/(1+dd_room) 
                 d_20=d_room*(1-dd_room)
             else:
@@ -750,7 +722,8 @@ class HelloWindow(QMainWindow):
                     dspace_list[i][ind]=d_spacing[ind]
                     sigma_list[i][ind]=sigma[ind]
                     self.pwplot.plot(scanid,peak_list[0:i+1,ind],pen=(ind+1,7))
-                    pg.QtGui.QApplication.processEvents()                     
+                    #pg.QtGui.QApplication.processEvents()
+                    pg.QtWidgets.QApplication.processEvents()
             except IndexError:
                 print(f'scan :{i} has more peaks than others')
             output1=f'center:{center};d: {d_spacing}'
@@ -796,8 +769,6 @@ class HelloWindow(QMainWindow):
         peak_indicies=update_spec_from_peaks(spec, model_list, peak_width=(peak_widths, peak_widths), peak_min=peak_min)
         if len(peak_indicies) > 0:
             model, params = generate_model(spec)
-            print(model)
-            print(params)
             self.pw2.plot(spec['x'],spec['y'])
             for i in peak_indicies:
                 line=pg.InfiniteLine(angle=90)
@@ -820,7 +791,8 @@ class HelloWindow(QMainWindow):
             for j, model_type in enumerate(spec['model']):
                 self.pwlist[0].plot(spec['x'],components[f'm{j}_'],pen=(j,7))
                 self.pwlist[0].plot(spec['x'], spec['y'])
-                pg.QtGui.QApplication.processEvents()
+                #pg.QtGui.QApplication.processEvents()
+                pg.QtWidgets.QApplication.processEvents()
 #            axes[j].plot(spec['x'],components[f'm{j}_'], spec['x'], spec['y'],'.')
 #        plt.show() 
         else:
@@ -875,7 +847,7 @@ def gaussian(x, amp, cen, wid):
 
 if __name__ == "__main__":
     def run_app():
-        app = QtWidgets.QApplication([])
+        app = QtWidgets.QApplication(sys.argv)
         mainWin = HelloWindow()
         mainWin.show()
         app.exec_()
